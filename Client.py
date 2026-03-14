@@ -100,12 +100,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
----
-
-**Résumé du flux :**
-```
-[server.py] écoute sur PORT 65432
-      ↕  TCP
-[client.py] se connecte → AUTH → reçoit les commandes → exécute → renvoie la réponse
+    
