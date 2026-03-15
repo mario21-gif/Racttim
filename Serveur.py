@@ -2,7 +2,7 @@ import socket
 import platform
 
 # --- CONFIGURATION ---
-PORT = 65432
+PORT = 4444 # Doit être le même que celui du tunnel Serveo
 PASSWORD = "1234"
 
 HELP_TEXT = """
@@ -15,11 +15,16 @@ HELP_TEXT = """
 ║  lock            → Verrouille le PC      ║
 ║  battery         → Niveau batterie Linux ║
 ║  exit            → Fermer la connexion   ║
+║  [Toute autre commande shell ex: ls, cd] ║
 ╚══════════════════════════════════════════╝
 """
 
 def handle_client(conn, addr):
-    print(f"\n[+] APPAREIL DISTANT CONNECTÉ : {addr[0]}")
+    print(f"\n[+] APPAREIL DISTANT CONNECTÉ")
+    
+    # Réception des infos (IP et Hostname envoyés par le client)
+    infos_initiales = conn.recv(1024).decode('utf-8')
+    print(infos_initiales)
 
     conn.sendall(b"AUTH_REQUIRED")
     auth = conn.recv(1024).decode().strip()
@@ -34,64 +39,33 @@ def handle_client(conn, addr):
 
     while True:
         try:
-            cmd = input(f"\n({addr[0]}) > ").strip()
-            if not cmd:
-                continue
-
+            cmd = input(f"RACTT > ").strip()
+            if not cmd: continue
             if cmd.lower() == "help":
                 print(HELP_TEXT)
                 continue
 
             conn.sendall(cmd.encode())
+            if cmd.lower() == "exit": break
 
-            if cmd.lower() == "exit":
-                print("[*] Déconnexion envoyée.")
-                break
+            reponse = conn.recv(4096).decode()
+            print(f"\n[RÉPONSE PC DISTANT] :\n{reponse}")
 
-            try:
-                conn.settimeout(10)
-                reponse = conn.recv(4096).decode()
-                print(f"[PC DISTANT] : {reponse}")
-            except socket.timeout:
-                print("[!] Timeout — pas de réponse du client.")
-            finally:
-                conn.settimeout(None)
-
-        except (BrokenPipeError, ConnectionResetError):
-            print("[!] Connexion interrompue par le client.")
+        except Exception as e:
+            print(f"[!] Erreur : {e}")
             break
-        except KeyboardInterrupt:
-            print("\n[*] Interruption clavier. Fermeture.")
-            conn.sendall(b"exit")
-            break
-
 
 def start_server():
     print("--- RACTT SERVER CENTRAL ---")
     print(f"[*] Système  : {platform.system()}")
-    print(f"[*] Port     : {PORT}")
-    print("[*] En attente d'une connexion...")
-
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        try:
-            s.bind(('0.0.0.0', PORT))
-            s.listen(1)
-        except Exception as e:
-            print(f"[!] Erreur de démarrage : {e}")
-            return
-
+        s.bind(('0.0.0.0', PORT))
+        s.listen(1)
+        print(f"[*] En attente sur le port {PORT}...")
         while True:
-            try:
-                conn, addr = s.accept()
-                with conn:
-                    handle_client(conn, addr)
-                print("\n[*] En attente d'une nouvelle connexion...")
-            except KeyboardInterrupt:
-                print("\n[*] Serveur arrêté.")
-                break
-
+            conn, addr = s.accept()
+            handle_client(conn, addr)
 
 if __name__ == "__main__":
     start_server()
